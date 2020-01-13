@@ -72,12 +72,19 @@ static void child_readwrite(int s, int r)
 	max++;
 
 	for (;;) {
+		struct timeval tv;
 		FD_ZERO(&fds);
 		FD_SET(s, &fds);
 		FD_SET(r, &fds);
-		ret = select(max, &fds, NULL, NULL, NULL);
+		tv.tv_sec = 3600;
+		tv.tv_usec = 0;
+		ret = select(max, &fds, NULL, NULL, &tv);
 		if (ret < 0)
 			return;
+		if (ret == 0) {
+			printf("nothing happens in hour, disconnect\n");
+			return;
+		}
 		if (FD_ISSET(s, &fds)) {
 			ret = read(s, buf, bufsz);
 			if (ret <= 0)
