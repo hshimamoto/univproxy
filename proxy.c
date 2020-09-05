@@ -9,8 +9,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 #include <signal.h>
 #include <errno.h>
+
+static inline void ldatetime(char *dt, int sz)
+{
+	time_t t = time(NULL);
+	struct tm *tmp = localtime(&t);
+	if (!tmp)
+		strcpy(dt, "-");
+	else
+		strftime(dt, sz, "%F %T", tmp);
+}
+
+#define logf(...) \
+	do { \
+		char dt[80]; \
+		ldatetime(dt, sizeof(dt)); \
+		fprintf(stderr, "%s [%d] ", dt, getpid()); \
+		fprintf(stderr, __VA_ARGS__); \
+		fflush(stderr); \
+	} while (0)
 
 #define BUFSZ	(65536)
 const int defport = 8888;
@@ -66,7 +86,7 @@ static int child_connect(int s, const char *host, const char *port)
 	if (r < 0)
 		return -1;
 
-	printf("connecting to %s %s\n", host, port);
+	logf("connecting to %s %s\n", host, port);
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -100,7 +120,7 @@ static void child_readwrite(int s, int r)
 		if (ret < 0)
 			return;
 		if (ret == 0) {
-			printf("nothing happens in hour, disconnect\n");
+			logf("nothing happens in hour, disconnect\n");
 			return;
 		}
 		if (FD_ISSET(s, &fds)) {
