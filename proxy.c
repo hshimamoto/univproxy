@@ -1,3 +1,4 @@
+// MIT License Copyright(c) 2017, 2020 Hiroshi Shimamoto
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
