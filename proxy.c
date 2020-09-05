@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -37,6 +38,22 @@ static int listensocket(int port)
 bad:
 	close(s);
 	return -1;
+}
+
+static void enable_tcpkeepalive(int s, int idle, int cnt, int intvl)
+{
+	int val = 1;
+	socklen_t len = sizeof(val);
+
+	// enable
+	setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &val, len);
+	// set params
+	val = idle;
+	setsockopt(s, SOL_TCP, TCP_KEEPIDLE, &val, len);
+	val = cnt;
+	setsockopt(s, SOL_TCP, TCP_KEEPCNT, &val, len);
+	val = intvl;
+	setsockopt(s, SOL_TCP, TCP_KEEPINTVL, &val, len);
 }
 
 static int child_connect(int s, const char *host, const char *port)
@@ -169,6 +186,7 @@ static void accept_and_run(int s)
 	/* no need accept socket */
 	close(s);
 
+	enable_tcpkeepalive(cli, 120, 5, 5);
 	child_work(cli);
 	_exit(0);
 }
