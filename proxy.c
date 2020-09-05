@@ -107,13 +107,15 @@ static void child_readwrite(int s, int r)
 			ret = read(s, buf, bufsz);
 			if (ret <= 0)
 				return;
-			write(r, buf, ret);
+			if (write(r, buf, ret) <= 0)
+				return;
 		}
 		if (FD_ISSET(r, &fds)) {
 			ret = read(r, buf, bufsz);
 			if (ret <= 0)
 				return;
-			write(s, buf, ret);
+			if (write(s, buf, ret) <= 0)
+				return;
 		}
 	}
 }
