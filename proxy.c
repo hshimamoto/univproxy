@@ -86,6 +86,8 @@ static int child_connect(int s, const char *host, const char *port)
 	if (r < 0)
 		return -1;
 
+	enable_tcpkeepalive(r, 120, 5, 5);
+
 	logf("connecting to %s %s\n", host, port);
 
 	memset(&hints, 0, sizeof(hints));
