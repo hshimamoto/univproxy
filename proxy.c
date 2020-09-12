@@ -1,5 +1,6 @@
 // MIT License Copyright(c) 2017, 2020 Hiroshi Shimamoto
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -31,6 +32,29 @@ static inline void ldatetime(char *dt, int sz)
 		fprintf(stderr, __VA_ARGS__); \
 		fflush(stderr); \
 	} while (0)
+
+void get_duration(char *buf, int n, struct timeval *prev)
+{
+	struct timeval now;
+	gettimeofday(&now, NULL);
+	int duration = now.tv_sec - prev->tv_sec;
+	if (duration < 600) {
+		int ms = (now.tv_usec - prev->tv_usec) / 1000;
+		if (ms < 0) {
+			ms += 1000;
+			duration++;
+		}
+		snprintf(buf, n, "%d.%03ds", duration, ms);
+	} else if (duration < 3600) {
+		snprintf(buf, n, "%dm", duration / 60);
+	} else if (duration < 12 * 3600) {
+		int h = duration / 3600;
+		int m = (duration / 60) % 60;
+		snprintf(buf, n, "%dh %dm", h, m);
+	} else {
+		snprintf(buf, n, "%dh", duration / 3600);
+	}
+}
 
 #define BUFSZ	(65536)
 const int defport = 8888;
@@ -88,8 +112,6 @@ static int child_connect(int s, const char *host, const char *port)
 
 	enable_tcpkeepalive(r, 120, 5, 5);
 
-	logf("connecting to %s %s\n", host, port);
-
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
@@ -142,24 +164,30 @@ static void child_readwrite(int s, int r)
 	}
 }
 
-static void child_work(int s)
+static void child_work(char *from, int s)
 {
 	char *proto, *crlf2;
 	char *host, *port;
 	int ret;
 	int r;
+	struct timeval tv_start;
+	char duration[32];
+	char target[256];
+
+	gettimeofday(&tv_start, NULL);
+	snprintf(target, 256, "UNKNOWN");
 
 	ret = read(s, buf, bufsz);
 	if (ret < 0)
-		return;
+		goto out;
 	if (strncmp(buf, "CONNECT ", 8))
-		return;
+		goto out;
 	proto = strstr(buf + 8, " HTTP/1");
 	if (!proto)
-		return;
+		goto out;
 	crlf2 = strstr(proto, "\r\n\r\n");
 	if (!crlf2)
-		return;
+		goto out;
 	/* get host:port */
 	host = buf + 8;
 	port = host;
@@ -168,13 +196,15 @@ static void child_work(int s)
 			goto hostok;
 		port++;
 	}
-	return;
+	goto out;
 hostok:
 	*port++ = '\0'; /* clear ':' */
 	*proto = '\0';
+	snprintf(target, 256, "%s:%s", host, port);
 	r = child_connect(s, host, port);
 	if (r < 0)
-		return;
+		goto out;
+	logf("established %s %s\n", from, target);
 	/* connect ok 56789 123456789 123 */
 	write(s, "HTTP/1.0 200 CONNECT OK\r\n\r\n", 27);
 	/* write rest */
@@ -184,6 +214,9 @@ hostok:
 		write(r, crlf2, ret);
 
 	child_readwrite(s, r);
+out:
+	get_duration(duration, 32, &tv_start);
+	logf("close %s %s [%s]\n", from, target, duration);
 }
 
 static void accept_and_run(int s)
@@ -212,7 +245,7 @@ static void accept_and_run(int s)
 	close(s);
 
 	enable_tcpkeepalive(cli, 120, 5, 5);
-	child_work(cli);
+	child_work(inet_ntoa(addr.sin_addr), cli);
 	_exit(0);
 }
 
