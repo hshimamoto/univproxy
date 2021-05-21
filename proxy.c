@@ -1,4 +1,4 @@
-// MIT License Copyright(c) 2017, 2020 Hiroshi Shimamoto
+// MIT License Copyright(c) 2017, 2020, 2021 Hiroshi Shimamoto
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -169,6 +169,7 @@ static void child_work(char *from, int s)
 	char *proto, *crlf2;
 	char *host, *port;
 	int ret;
+	int len;
 	int r;
 	struct timeval tv_start;
 	char duration[32];
@@ -177,9 +178,15 @@ static void child_work(char *from, int s)
 	gettimeofday(&tv_start, NULL);
 	snprintf(target, 256, "UNKNOWN");
 
-	ret = read(s, buf, bufsz);
-	if (ret < 0)
-		goto out;
+	len = 0;
+	while (len < bufsz) {
+		ret = read(s, buf + len, bufsz - len);
+		if (ret <= 0)
+			goto out;
+		len += ret;
+		if (strstr(buf, "\r\n\r\n") != NULL)
+			break;
+	}
 	if (strncmp(buf, "CONNECT ", 8))
 		goto out;
 	proto = strstr(buf + 8, " HTTP/1");
