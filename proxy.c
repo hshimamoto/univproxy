@@ -174,10 +174,12 @@ static void child_work(char *from, int s)
 	struct timeval tv_start;
 	char duration[32];
 	char target[256];
+	int goodrequest = 0;
 
 	gettimeofday(&tv_start, NULL);
 	snprintf(target, 256, "UNKNOWN");
 
+	/* if it does not look HTTP CONNECT request, just ignore */
 	len = 0;
 	while (len < bufsz) {
 		ret = read(s, buf + len, bufsz - len);
@@ -195,6 +197,7 @@ static void child_work(char *from, int s)
 	crlf2 = strstr(proto, "\r\n\r\n");
 	if (!crlf2)
 		goto out;
+
 	/* get host:port */
 	host = buf + 8;
 	port = host;
@@ -203,14 +206,15 @@ static void child_work(char *from, int s)
 			goto hostok;
 		port++;
 	}
-	goto out;
+	goto bad;
 hostok:
+	goodrequest = 1;
 	*port++ = '\0'; /* clear ':' */
 	*proto = '\0';
 	snprintf(target, 256, "%s:%s", host, port);
 	r = child_connect(s, host, port);
 	if (r < 0)
-		goto out;
+		goto bad;
 	logf("established %s %s\n", from, target);
 	/* connect ok 56789 123456789 123 */
 	write(s, "HTTP/1.0 200 CONNECT OK\r\n\r\n", 27);
@@ -221,6 +225,15 @@ hostok:
 		write(r, crlf2, ret);
 
 	child_readwrite(s, r);
+	goto out;
+bad:
+	if (goodrequest) {
+		/*        0123456789 123456789 12 3 4 5 6 */
+		write(s, "HTTP/1.0 404 Not Found\r\n\r\n", 26);
+	} else {
+		/*        0123456789 123456789 1234 5 6 7 8 */
+		write(s, "HTTP/1.0 400 Bad Request\r\n\r\n", 28);
+	}
 out:
 	get_duration(duration, 32, &tv_start);
 	logf("close %s %s [%s]\n", from, target, duration);
